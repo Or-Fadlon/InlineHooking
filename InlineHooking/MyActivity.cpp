@@ -38,7 +38,7 @@ int InlineHook()
 	OutputDebugString("Before");
 
 	printf("[Fadlon] Inline enter\n");
-	HookOutputDebugStringA* origFunctionAddress = (HookOutputDebugStringA)GetProcAddress(GetModuleHandleA("kernel32.dll"), "OutputDebugStringA");
+	HookOutputDebugStringA origFunctionAddress = (HookOutputDebugStringA)GetProcAddress(GetModuleHandleA("kernel32.dll"), "OutputDebugStringA");
 	printf("[Fadlon] origFunctionAddress - '%x'\n", origFunctionAddress);
 
 	// Allocate some memory to store the start of the original function
@@ -99,10 +99,10 @@ int InlineHook()
 	// Cast the trampoline address to a function 
 	outputDebugStringTrampoline = (HookOutputDebugStringA)trampolineAddress;
 
-	printf("[Fadlon] After\n");
+	printf("[Fadlon] Done\n");
 	// The hook should now be complete
 	// Call OutputDebugString again to test the hook
-	//OutputDebugString("After");
+	OutputDebugString("After");
 
 	return 0;
 }
@@ -113,7 +113,7 @@ bool StartActivity()
 {
 	//HookOutputDebugStringA hookFunction = MyOutputDebugString;
 	printf("[Fadlon] Start\n");
-	return InlineHook();
+	return true; // InlineHook();
 }
 
 //	UnHook!
