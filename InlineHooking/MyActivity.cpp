@@ -27,73 +27,87 @@ void WINAPI MyOutputDebugString(LPCSTR lpOutputString)
 	return outputDebugStringTrampoline(lpOutputString);
 }
 
-int Error(const char* msg) {
-	printf("[Fadlon] Error!: %s (%u)", msg, GetLastError());
-	return 1;
+bool Error(const char* msg) {
+	printf("[Fadlon] Error!: %s (%u)\n", msg, GetLastError());
+	return false;
 }
 
-int InlineHook()
+void PrintHex(char* data, int dataSize, char *name) {
+	printf("[Fadlon] %s: '", name);
+	for (int i = 0; i < dataSize; i++) {
+		printf("%hhx ", data[i]);
+	}
+	printf("'\n");
+}
+
+bool InlineHook()
 {
 	// Call OutputDebugString before hooking to show original functionality
-	OutputDebugString("Before");
+	OutputDebugString("[Fadlon] Before");
 
 	printf("[Fadlon] Inline enter\n");
-	HookOutputDebugStringA origFunctionAddress = (HookOutputDebugStringA)GetProcAddress(GetModuleHandleA("kernel32.dll"), "OutputDebugStringA");
-	printf("[Fadlon] origFunctionAddress - '%x'\n", origFunctionAddress);
+	HMODULE moduleHanlde = GetModuleHandleA("kernel32.dll");
+	if (moduleHanlde == NULL) {
+		return Error("Can't find 'kernel32.dll' module");
+	}
+	HookOutputDebugStringA origFunctionAddress = (HookOutputDebugStringA)GetProcAddress(moduleHanlde, "OutputDebugStringA");
+	if (origFunctionAddress == NULL) {
+		return Error("Can't find 'OutputDebugStringA' function");
+	}
+	printf("[Fadlon] original function pointer - '%llu'\n", (ULONGLONG)origFunctionAddress);
 
 	// Allocate some memory to store the start of the original function
 	BYTE* trampolineAddress = (BYTE*)VirtualAlloc(NULL, 1024, MEM_COMMIT, PAGE_EXECUTE_READWRITE);
 	if (trampolineAddress == NULL) {
-		Error("Failed to allocate memory for trampoline");
+		return Error("Failed to allocate memory for trampoline");
 	}
 
 	const int numOfBytesToCopy = 5;
-	const int trampolineSize = numOfBytesToCopy * 3;
+	const int trampolineSize = 30;
 	char trampoline[trampolineSize] = {};
 
 	// Copy the first few bytes of the original function to the trampoline function
-	memcpy(trampolineAddress, origFunctionAddress, numOfBytesToCopy);
+	PrintHex((char*)*origFunctionAddress, numOfBytesToCopy*10, (char*)"origFunctionAddress");
+	memcpy(trampoline, origFunctionAddress, numOfBytesToCopy);
 
 	// The the end of the copied bytes we want to JMP back to the original hooked function
 	// 0xE9 is the JMP opcode here. It needs to be given a 4 bytes address
-	*(DWORD*)(trampoline + numOfBytesToCopy) = 0xE9;
+	trampoline[numOfBytesToCopy] = 0xE9;
 
 	// Calculate where we want to jump back to in the original hooked fuction
 	uintptr_t jumpAddress = (BYTE*)origFunctionAddress - trampolineAddress - numOfBytesToCopy;
-	printf("[Fadlon] jumpAddress - '%x'\n", jumpAddress);
+	printf("[Fadlon] jumpAddress - '%llu'\n", (ULONGLONG)jumpAddress);
 
 	// Write the JMP address to our trampoline
 	*(uintptr_t*)((uintptr_t)trampoline + numOfBytesToCopy + 1) = jumpAddress;
 
+	PrintHex((char*)trampoline, trampolineSize, (char*)"trampoline");
+
 	// Write the trampoline to the allocated trampoline memory region
-	if (!WriteProcessMemory(GetCurrentProcess(), trampolineAddress, trampoline, sizeof(trampoline), NULL)) {
+	int sizeToCopy = numOfBytesToCopy + 1 + sizeof(uintptr_t);
+	printf("[Fadlon] numOfBytesToCopy - %d\n", sizeToCopy);
+	if (!WriteProcessMemory(GetCurrentProcess(), trampolineAddress, trampoline, sizeToCopy, NULL)) {
 		return Error("Error while writing process memory to trampoline");
 	}
-
-	printf("[Fadlon] trampoline: '");
-	for (int i = 0; i < trampolineSize; i++) {
-		printf("%x", trampoline[i]);
-	}
-	printf("'\n");
 
 	printf("[Fadlon] VP1\n");
 	// Change memory protection on OutputDebugString code to make sure it's writable
 	DWORD oldProtectVal;
-	VirtualProtect(origFunctionAddress, 6, PAGE_READWRITE, &oldProtectVal);
+	VirtualProtect(origFunctionAddress, sizeof(intptr_t) + 1, PAGE_READWRITE, &oldProtectVal);
 
 	// Patch the original OutputDebugString code
 	// First we replace the first BYTE with a JMP instruction
 	*(BYTE*)origFunctionAddress = 0xE9;
 
 	// Then we calculate the relative address to JMP to our Hook function
-	intptr_t hookAddress = (intptr_t)((CHAR*)MyOutputDebugString - (intptr_t)origFunctionAddress) - 5;
+	intptr_t hookAddress = (intptr_t)((CHAR*)MyOutputDebugString - (intptr_t)origFunctionAddress) - numOfBytesToCopy;
 
 	// Write the relative address to the original OutputDebugString function
 	*(intptr_t*)((intptr_t)origFunctionAddress + 1) = hookAddress;
 
-	printf("[Fadlon] %x\n", hookAddress);
+	printf("[Fadlon] %llu\n", (ULONGLONG)hookAddress);
 	// Restore original memory protection on OutputDebugString code
-	VirtualProtect(origFunctionAddress, 6, oldProtectVal, &oldProtectVal);
+	VirtualProtect(origFunctionAddress, sizeof(intptr_t) + 1, oldProtectVal, &oldProtectVal);
 	printf("[Fadlon] VP2\n");
 
 	// Cast the trampoline address to a function 
@@ -104,7 +118,7 @@ int InlineHook()
 	// Call OutputDebugString again to test the hook
 	OutputDebugString("After");
 
-	return 0;
+	return true;
 }
 
 
@@ -113,7 +127,7 @@ bool StartActivity()
 {
 	//HookOutputDebugStringA hookFunction = MyOutputDebugString;
 	printf("[Fadlon] Start\n");
-	return true; // InlineHook();
+	return InlineHook();
 }
 
 //	UnHook!
