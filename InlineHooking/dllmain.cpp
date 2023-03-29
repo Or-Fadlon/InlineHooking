@@ -10,7 +10,7 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD ul_reason_for_call, LPVOID lpReserv
 		OutputDebugString("Dll Process Attach");
 		try
 		{
-			StartActivity() ? OutputDebugString("FreeActivity Successfully!") : OutputDebugString("FreeActivity Failed!");
+			StartActivity() ? OutputDebugString("StartActivity Successfully!") : OutputDebugString("StartActivity Failed!");
 		}
 		catch (const std::exception& e)
 		{
